@@ -28,6 +28,84 @@ async function initRules(){try{const d=await api('mSettings,mStatus,mTeam');cons
 async function initTransactions(){try{const d=await api('mTeam,mTransactions2');const teams=d.teams||[];const tm=new Map(teams.map(t=>[t.id,t]));const tx=d.transactions||[];$('#transactions').innerHTML=tx.length?tx.slice(0,75).map(x=>{const team=tm.get(x.teamId||x.proposingTeamId||x.executingTeamId);return `<div class="transaction-row"><div><strong>${esc(String(x.type||x.status||'Transaction').replaceAll('_',' '))}</strong><div class="muted">${esc(teamName(team))}</div></div><small class="muted">${x.processDate?new Date(x.processDate).toLocaleString():''}</small></div>`}).join(''):'<div class="empty-state">ESPN did not return public transaction details. This view can require league authentication.</div>'}catch(e){$('#transactions').innerHTML='<div class="empty-state">ESPN transaction history is unavailable publicly for this league.</div>'}}
 async function initPlayoffs(){try{const d=await api('mTeam,mSchedule,mStatus,mSettings');const p=(d.schedule||[]).filter(g=>g.playoffTierType&&g.playoffTierType!=='NONE');$('#playoffGrid').innerHTML=p.length?scoreboardMarkup({...d,schedule:p},p[0].matchupPeriodId):'<div class="panel empty-state">Playoff bracket will populate when ESPN marks playoff matchups.</div>'}catch(e){$('#playoffGrid').innerHTML='<div class="panel empty-state">Could not load playoffs.</div>'}}
 async function initRivalries(){try{const d=await api('mTeam,mSchedule');const teams=d.teams||[];const tm=new Map(teams.map(t=>[t.id,t])),pairs=new Map();(d.schedule||[]).forEach(g=>{if(!g.away?.teamId||!g.home?.teamId)return;const ids=[g.away.teamId,g.home.teamId].sort((a,b)=>a-b),k=ids.join('-');const x=pairs.get(k)||{a:ids[0],b:ids[1],games:0,aW:0,bW:0};x.games++;if(g.winner==='AWAY'){g.away.teamId===x.a?x.aW++:x.bW++}if(g.winner==='HOME'){g.home.teamId===x.a?x.aW++:x.bW++}pairs.set(k,x)});const rows=[...pairs.values()].sort((a,b)=>b.games-a.games).slice(0,20);$('#rivalryBody').innerHTML=rows.map((x,i)=>`<tr><td class="rank">${i+1}</td><td><strong>${esc(teamName(tm.get(x.a)))}</strong> vs <strong>${esc(teamName(tm.get(x.b)))}</strong></td><td>${x.games}</td><td>${x.aW}-${x.bW}</td></tr>`).join('')}catch(e){$('#rivalryBody').innerHTML='<tr><td colspan="4">Could not build rivalry history.</td></tr>'}}
-async function initRecords(){try{const cur=await api('mTeam,mStandings,mStatus');let years=[...(cur.status?.previousSeasons||[]),CFG.season].filter(y=>y>=CFG.est);years=[...new Set(years)].sort();const agg=new Map(),champs=[];for(const y of years){try{const d= y===CFG.season?cur:await api('mTeam,mStandings,mSchedule', '', y);const sorted=standingsSorted(d);(d.teams||[]).forEach(t=>{const key=t.owners?.[0]||`${y}-${t.id}`,a=agg.get(key)||{name:ownerName(t,d),wins:0,losses:0,pf:0,seasons:0,titles:0};const r=overall(t);a.wins+=r.wins||0;a.losses+=r.losses||0;a.pf+=r.pointsFor||0;a.seasons++;agg.set(key,a)});if(y<CFG.season&&sorted[0]){const winner=sorted[0],key=winner.owners?.[0]||`${y}-${winner.id}`;if(agg.has(key))agg.get(key).titles++;champs.push({year:y,name:ownerName(winner,d),team:teamName(winner)})}}catch{}}const list=[...agg.values()].sort((a,b)=>b.wins-a.wins||b.pf-a.pf);$('#careerWins').innerHTML=list.slice(0,10).map((a,i)=>`<div class="record-rank-row"><span class="record-rank">${i+1}</span><div><strong>${esc(a.name)}</strong><small>${a.seasons} ESPN seasons tracked</small></div><b>${a.wins} W</b></div>`).join('');$('#careerPoints').innerHTML=[...list].sort((a,b)=>b.pf-a.pf).slice(0,10).map((a,i)=>`<div class="record-rank-row"><span class="record-rank">${i+1}</span><div><strong>${esc(a.name)}</strong><small>${a.seasons} seasons</small></div><b>${fmt(a.pf)}</b></div>`).join('');$('#champions').innerHTML=champs.sort((a,b)=>b.year-a.year).map(c=>`<div class="record-line"><span><strong>${c.year}</strong> • ${esc(c.team)}</span><b>${esc(c.name)}</b></div>`).join('')||'<div class="empty-state">Historical champions will populate from ESPN seasons when available.</div>'}catch(e){$('#careerWins').innerHTML='<div class="empty-state">Could not load record book.</div>'}}
+async function initRecords(){
+  try{
+    // ESPN does not reliably return previousSeasons, so explicitly request
+    // every American Savages season from 2019 through the current season.
+    const years=Array.from({length:CFG.season-CFG.est+1},(_,i)=>CFG.est+i);
+    const results=await Promise.allSettled(
+      years.map(y=>api('mTeam,mStandings,mSchedule,mStatus','',y))
+    );
+
+    const agg=new Map(),champs=[];
+    let seasonsLoaded=0;
+
+    results.forEach((result,index)=>{
+      if(result.status!=='fulfilled')return;
+      const y=years[index];
+      const d=result.value;
+      if(!d?.teams?.length)return;
+
+      seasonsLoaded++;
+      const sorted=standingsSorted(d);
+
+      (d.teams||[]).forEach(t=>{
+        const key=t.owners?.[0]||`${y}-${t.id}`;
+        const a=agg.get(key)||{
+          name:ownerName(t,d),
+          wins:0,
+          losses:0,
+          ties:0,
+          pf:0,
+          seasons:0,
+          titles:0
+        };
+        const r=overall(t);
+        a.name=ownerName(t,d)||a.name;
+        a.wins+=Number(r.wins||0);
+        a.losses+=Number(r.losses||0);
+        a.ties+=Number(r.ties||0);
+        a.pf+=Number(r.pointsFor||0);
+        a.seasons++;
+        agg.set(key,a);
+      });
+
+      // For completed seasons, ESPN's final standings put the champion first.
+      if(y<CFG.season&&sorted[0]){
+        const winner=sorted[0];
+        const key=winner.owners?.[0]||`${y}-${winner.id}`;
+        if(agg.has(key))agg.get(key).titles++;
+        champs.push({
+          year:y,
+          name:ownerName(winner,d),
+          team:teamName(winner)
+        });
+      }
+    });
+
+    const list=[...agg.values()].sort((a,b)=>b.wins-a.wins||b.pf-a.pf);
+
+    $('#careerWins').innerHTML=list.length
+      ?list.slice(0,10).map((a,i)=>`<div class="record-rank-row"><span class="record-rank">${i+1}</span><div><strong>${esc(a.name)}</strong><small>${a.seasons} ESPN seasons tracked</small></div><b>${a.wins} W</b></div>`).join('')
+      :'<div class="empty-state">No historical ESPN seasons could be loaded.</div>';
+
+    $('#careerPoints').innerHTML=list.length
+      ?[...list].sort((a,b)=>b.pf-a.pf).slice(0,10).map((a,i)=>`<div class="record-rank-row"><span class="record-rank">${i+1}</span><div><strong>${esc(a.name)}</strong><small>${a.seasons} seasons</small></div><b>${fmt(a.pf)}</b></div>`).join('')
+      :'<div class="empty-state">No historical scoring data could be loaded.</div>';
+
+    $('#champions').innerHTML=champs.length
+      ?champs.sort((a,b)=>b.year-a.year).map(c=>`<div class="record-line"><span><strong>${c.year}</strong> • ${esc(c.team)}</span><b>${esc(c.name)}</b></div>`).join('')
+      :'<div class="empty-state">No completed-season champions were returned by ESPN.</div>';
+
+    const heroSub=$('.page-sub');
+    if(heroSub&&seasonsLoaded){
+      heroSub.textContent=`Career wins, scoring totals and champions from ${seasonsLoaded} ESPN seasons, ${CFG.est}–${CFG.season}.`;
+    }
+  }catch(e){
+    $('#careerWins').innerHTML='<div class="empty-state">Could not load record book.</div>';
+    $('#careerPoints').innerHTML='<div class="empty-state">Could not load record book.</div>';
+    $('#champions').innerHTML='<div class="empty-state">Could not load championship history.</div>';
+  }
+}
 async function boot(){shell();initTicker();const p=document.body.dataset.page;({home:initHome,game:initGame,standings:initStandings,managers:initManagers,players:initPlayers,draft:initDraft,rules:initRules,transactions:initTransactions,playoffs:initPlayoffs,rivalries:initRivalries,records:initRecords}[p]||(()=>{}))()}
 document.addEventListener('DOMContentLoaded',boot);
