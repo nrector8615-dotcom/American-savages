@@ -1,4 +1,13 @@
 {
-  "rewrites": [{ "source": "/api/espn", "destination": "/api/espn.js" }],
-  "headers": [{"source":"/(.*)","headers":[{"key":"X-Content-Type-Options","value":"nosniff"}]}]
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        }
+      ]
+    }
+  ]
 }
