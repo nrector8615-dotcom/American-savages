@@ -1,14 +1,12 @@
-AMERICAN SAVAGES - HISTORY + LOGO FIX
+AMERICAN SAVAGES HISTORY API FIX
 
-Replace these files in your GitHub repo:
+Replace:
+api/espn.js
 
-1) site.js
-   Replace the existing root-level site.js.
+This fixes historical ESPN seasons by using ESPN's leagueHistory endpoint
+for 2019-2025 and the normal seasons endpoint for 2026.
 
-2) assets/league-logo.png
-   Replace the existing logo with this transparent PNG.
+Keep the site.js from the previous history fix.
 
-The history fix explicitly loads ESPN seasons 2019 through 2026 instead of
-depending on ESPN's unreliable previousSeasons field.
-
-After committing both files, Vercel should redeploy automatically.
+After committing, let Vercel redeploy, then test:
+https://american-savages.vercel.app/api/espn?season=2019&views=mTeam,mStandings,mSchedule,mStatus
