@@ -11,19 +11,9 @@ export default async function handler(req, res) {
       .map(v => v.trim())
       .filter(Boolean);
 
-    let url;
-
-    if (season < currentSeason) {
-      url = new URL(
-        `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/${leagueId}`
-      );
-
-      url.searchParams.set('seasonId', String(season));
-    } else {
-      url = new URL(
-        `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${season}/segments/0/leagues/${leagueId}`
-      );
-    }
+    const url = new URL(
+      `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${season}/segments/0/leagues/${leagueId}`
+    );
 
     views.forEach(view => {
       url.searchParams.append('view', view);
@@ -49,7 +39,9 @@ export default async function handler(req, res) {
       return res.status(response.status).json({
         error: 'ESPN request failed',
         status: response.status,
-        body: text
+        body: text,
+        requestedSeason: season,
+        requestedUrl: url.toString()
       });
     }
 
@@ -63,16 +55,13 @@ export default async function handler(req, res) {
       });
     }
 
-    if (Array.isArray(data)) {
-      data = data[0] || {};
-    }
-
     res.setHeader(
       'Cache-Control',
       's-maxage=60, stale-while-revalidate=300'
     );
 
     return res.status(200).json(data);
+
   } catch (error) {
     console.error('ESPN proxy error:', error);
 
