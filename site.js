@@ -161,8 +161,7 @@ async function initRecords(){
 
     const years=seasonYears();
     const results=await Promise.allSettled(
-      years.map(y=>api('mTeam,mStandings,mSchedule,mStatus,mSettings','',y))
-    );
+      years.map(y=>api('mTeam,mStandings,mStatus,mSettings','',y))
 
     const agg=new Map(), champs=[], loaded=[], missing=[];
 
