@@ -26,11 +26,20 @@ export default async function handler(req, res) {
       );
     }
 
+    const headers = {
+      Accept: 'application/json, text/plain, */*',
+      'User-Agent': 'Mozilla/5.0'
+    };
+
+    const espnS2 = process.env.ESPN_S2;
+    const swid = process.env.SWID;
+
+    if (espnS2 && swid) {
+      headers.Cookie = `espn_s2=${espnS2}; SWID=${swid}`;
+    }
+
     const response = await fetch(url.toString(), {
-      headers: {
-        Accept: 'application/json, text/plain, */*',
-        'User-Agent': 'Mozilla/5.0'
-      }
+      headers
     });
 
     const text = await response.text();
@@ -41,7 +50,7 @@ export default async function handler(req, res) {
         status: response.status,
         body: text,
         requestedSeason: season,
-        requestedUrl: url.toString()
+        authenticated: Boolean(espnS2 && swid)
       });
     }
 
